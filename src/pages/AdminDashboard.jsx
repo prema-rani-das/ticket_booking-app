@@ -1,10 +1,10 @@
 // src/pages/AdminDashboard.jsx
-// Professional Admin Dashboard with Complete CRUD Operations
+// Professional Admin Dashboard with Category System
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { formatPrice, TRANSPORT_TYPES } from "../data/transports";
+import { formatPrice, TRANSPORT_TYPES, TRIPS } from "../data/transports";
 import {
   FaShieldAlt,
   FaSignOutAlt,
@@ -41,6 +41,11 @@ import {
   FaDollarSign,
   FaChair,
   FaTag,
+  FaSync,
+  FaHistory,
+  FaChartBar,
+  FaList,
+  FaThLarge,
 } from "react-icons/fa";
 import { MdDashboard, MdConfirmationNumber, MdPayment, MdAirplaneTicket } from "react-icons/md";
 
@@ -70,6 +75,20 @@ const defaultTrip = {
   totalSeats: 50,
   availableSeats: 50,
   class: "Economy",
+  popularity: 0,
+};
+
+// Category colors
+const categoryColors = {
+  flight: "bg-blue-500",
+  helicopter: "bg-purple-500",
+  train: "bg-green-500",
+  metro: "bg-cyan-500",
+  bus: "bg-orange-500",
+  launch: "bg-indigo-500",
+  speedboat: "bg-teal-500",
+  cng: "bg-yellow-500",
+  taxi: "bg-red-500",
 };
 
 export default function AdminDashboard() {
@@ -78,18 +97,14 @@ export default function AdminDashboard() {
 
   const [activeTab, setActiveTab] = useState("trips");
   const [searchTerm, setSearchTerm] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("all");
+  const [viewMode, setViewMode] = useState("table");
   const [trips, setTrips] = useState([]);
   const [bookings, setBookings] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
-
-  // Modal State
-  const [showModal, setShowModal] = useState(false);
-  const [editingTrip, setEditingTrip] = useState(null);
-  const [formData, setFormData] = useState(defaultTrip);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Stats
+  const [lastUpdated, setLastUpdated] = useState(new Date());
+  const [error, setError] = useState(null);
   const [stats, setStats] = useState({
     totalTrips: 0,
     totalAvailableSeats: 0,
@@ -99,25 +114,58 @@ export default function AdminDashboard() {
     totalUsers: 0,
   });
 
+  // Category wise stats
+  const [categoryStats, setCategoryStats] = useState([]);
+
+  // Modal State
+  const [showModal, setShowModal] = useState(false);
+  const [editingTrip, setEditingTrip] = useState(null);
+  const [formData, setFormData] = useState(defaultTrip);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Use ref to prevent infinite loop
+  const isInitialized = useRef(false);
+
+  // Check admin access
   useEffect(() => {
     if (!isAdmin) {
       navigate("/admin-login");
-      return;
     }
-
-    setLoading(true);
-    loadAllData();
-    setLoading(false);
   }, [isAdmin, navigate]);
 
+  // Load data - ONLY ONCE on mount
+  useEffect(() => {
+    if (!isAdmin || isInitialized.current) return;
+    isInitialized.current = true;
+
+    loadAllData();
+  }, [isAdmin]);
+
+  // Separate function to load all data
   const loadAllData = () => {
-    // Load Trips
     try {
-      const saved = localStorage.getItem("stb-trips");
-      if (saved) {
-        setTrips(JSON.parse(saved));
+      setLoading(true);
+      setError(null);
+      
+      // Get today's date
+      const today = new Date().toISOString().split("T")[0];
+      
+      // Load ALL trips from TRIPS array
+      let tripData = [];
+      
+      if (TRIPS && TRIPS.length > 0) {
+        tripData = TRIPS.map((trip) => ({
+          ...trip,
+          date: trip.date || today,
+          availableSeats: trip.totalSeats || 50,
+          id: trip.id || "TRIP" + Date.now() + Math.random().toString(36).substr(2, 4),
+        }));
+        
+        // Save to localStorage for persistence
+        localStorage.setItem("stb-trips", JSON.stringify(tripData));
       } else {
-        const defaultTrips = [
+        // Fallback if TRIPS is empty
+        tripData = [
           {
             id: "TRIP001",
             from: "Dhaka",
@@ -125,117 +173,180 @@ export default function AdminDashboard() {
             departure: "08:00 AM",
             arrival: "10:30 AM",
             duration: "2h 30m",
-            date: "2026-07-15",
-            type: "airplane",
-            operator: "Biman Bangladesh",
-            pricePerSeat: 5000,
-            totalSeats: 100,
-            availableSeats: 45,
-            class: "Economy",
+            date: today,
+            type: "bus",
+            operator: "Green Line",
+            pricePerSeat: 1200,
+            totalSeats: 50,
+            availableSeats: 50,
+            class: "AC Business",
+            popularity: 80,
           },
           {
             id: "TRIP002",
             from: "Dhaka",
-            to: "Sylhet",
-            departure: "10:00 AM",
-            arrival: "12:15 PM",
-            duration: "2h 15m",
-            date: "2026-07-15",
-            type: "train",
-            operator: "Bengal Express",
-            pricePerSeat: 800,
-            totalSeats: 200,
-            availableSeats: 120,
-            class: "Standard",
-          },
-          {
-            id: "TRIP003",
-            from: "Dhaka",
             to: "Cox's Bazar",
             departure: "09:00 AM",
-            arrival: "12:30 PM",
-            duration: "3h 30m",
-            date: "2026-07-16",
+            arrival: "12:00 PM",
+            duration: "3h",
+            date: today,
             type: "bus",
-            operator: "Green Line",
-            pricePerSeat: 1200,
+            operator: "Hanif Enterprise",
+            pricePerSeat: 1800,
             totalSeats: 40,
-            availableSeats: 15,
-            class: "AC Business",
+            availableSeats: 40,
+            class: "AC Sleeper",
+            popularity: 90,
           },
         ];
-        setTrips(defaultTrips);
-        localStorage.setItem("stb-trips", JSON.stringify(defaultTrips));
+        localStorage.setItem("stb-trips", JSON.stringify(tripData));
       }
-    } catch (e) {
-      console.log("Error loading trips:", e);
-    }
+      
+      setTrips(tripData || []);
 
-    // Load Bookings
-    try {
-      const allBookings = JSON.parse(localStorage.getItem("stb-bookings")) ?? [];
+      // Calculate category stats
+      calculateCategoryStats(tripData);
+
+      // Load Bookings
+      const allBookings = JSON.parse(localStorage.getItem("stb-bookings") || "[]");
       setBookings(allBookings.reverse());
-    } catch (e) {
-      console.log("Error loading bookings:", e);
-    }
 
-    // Load Users
-    try {
-      const allUsers = JSON.parse(localStorage.getItem("stb-users")) ?? [];
+      // Load Users
+      const allUsers = JSON.parse(localStorage.getItem("stb-users") || "[]");
       setUsers(allUsers);
-    } catch (e) {
-      console.log("Error loading users:", e);
+
+      // Calculate Stats - with safe values
+      const paid = allBookings.filter((b) => b.status === "paid").length;
+      const revenue = allBookings.reduce((sum, b) => sum + (b.total || 0), 0);
+      const availableSeats = (tripData || []).reduce((sum, t) => sum + (t.availableSeats || 0), 0);
+
+      setStats({
+        totalTrips: (tripData || []).length || 0,
+        totalAvailableSeats: availableSeats || 0,
+        totalBookings: allBookings.length || 0,
+        paidBookings: paid || 0,
+        totalRevenue: revenue || 0,
+        totalUsers: allUsers.length || 0,
+      });
+
+      setLastUpdated(new Date());
+    } catch (err) {
+      console.error("Error loading data:", err);
+      setError("Failed to load dashboard data. Please refresh the page.");
+    } finally {
+      setLoading(false);
     }
-
-    // Calculate Stats
-    calculateStats();
   };
 
-  const calculateStats = () => {
-    const allBookings = JSON.parse(localStorage.getItem("stb-bookings")) ?? [];
-    const allUsers = JSON.parse(localStorage.getItem("stb-users")) ?? [];
-    const allTrips = JSON.parse(localStorage.getItem("stb-trips")) ?? [];
-
-    const paid = allBookings.filter((b) => b.status === "paid").length;
-    const revenue = allBookings.reduce((sum, b) => sum + (b.total || 0), 0);
-    const availableSeats = allTrips.reduce((sum, t) => sum + (t.availableSeats || 0), 0);
-
-    setStats({
-      totalTrips: allTrips.length,
-      totalAvailableSeats: availableSeats,
-      totalBookings: allBookings.length,
-      paidBookings: paid,
-      totalRevenue: revenue,
-      totalUsers: allUsers.length,
+  // Calculate category wise stats
+  const calculateCategoryStats = (tripData) => {
+    const stats = {};
+    TRANSPORT_TYPES.forEach(cat => {
+      const tripsInCategory = tripData.filter(t => t.type === cat.id);
+      stats[cat.id] = {
+        ...cat,
+        count: tripsInCategory.length,
+        totalSeats: tripsInCategory.reduce((sum, t) => sum + (t.totalSeats || 0), 0),
+        availableSeats: tripsInCategory.reduce((sum, t) => sum + (t.availableSeats || 0), 0),
+        bookedSeats: tripsInCategory.reduce((sum, t) => sum + ((t.totalSeats || 0) - (t.availableSeats || 0)), 0),
+      };
     });
+    setCategoryStats(Object.values(stats));
   };
 
-  // Filter Data
+  // Reset seats for next day
+  const resetSeatsForNextDay = () => {
+    try {
+      const today = new Date().toISOString().split("T")[0];
+      const updatedTrips = trips.map((trip) => ({
+        ...trip,
+        date: today,
+        availableSeats: trip.totalSeats,
+      }));
+      setTrips(updatedTrips);
+      localStorage.setItem("stb-trips", JSON.stringify(updatedTrips));
+      
+      // Recalculate stats
+      const availableSeats = updatedTrips.reduce((sum, t) => sum + (t.availableSeats || 0), 0);
+      setStats(prev => ({
+        ...prev,
+        totalAvailableSeats: availableSeats || 0,
+      }));
+      
+      calculateCategoryStats(updatedTrips);
+      
+      alert(`Seats reset successfully! ${updatedTrips.length} trips updated.`);
+    } catch (err) {
+      console.error("Error resetting seats:", err);
+      alert("Failed to reset seats. Please try again.");
+    }
+  };
+
+  // Force reload all trips from TRIPS array
+  const reloadAllTrips = () => {
+    try {
+      const today = new Date().toISOString().split("T")[0];
+      if (TRIPS && TRIPS.length > 0) {
+        const freshData = TRIPS.map((trip) => ({
+          ...trip,
+          date: trip.date || today,
+          availableSeats: trip.totalSeats || 50,
+          id: trip.id || "TRIP" + Date.now() + Math.random().toString(36).substr(2, 4),
+        }));
+        setTrips(freshData);
+        localStorage.setItem("stb-trips", JSON.stringify(freshData));
+        
+        const availableSeats = freshData.reduce((sum, t) => sum + (t.availableSeats || 0), 0);
+        setStats(prev => ({
+          ...prev,
+          totalTrips: freshData.length || 0,
+          totalAvailableSeats: availableSeats || 0,
+        }));
+        
+        calculateCategoryStats(freshData);
+        
+        alert(`Reloaded ${freshData.length} trips successfully!`);
+      }
+    } catch (err) {
+      console.error("Error reloading trips:", err);
+      alert("Failed to reload trips. Please refresh the page.");
+    }
+  };
+
+  // Filter Data by category and search
   const filteredTrips = trips.filter(
-    (t) =>
-      t.from.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      t.to.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      t.operator.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      t.id.toLowerCase().includes(searchTerm.toLowerCase())
+    (t) => {
+      const categoryMatch = selectedCategory === "all" || t.type === selectedCategory;
+      const searchMatch = 
+        t.from?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        t.to?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        t.operator?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        t.id?.toLowerCase().includes(searchTerm.toLowerCase());
+      return categoryMatch && searchMatch;
+    }
   );
 
   const filteredBookings = bookings.filter(
     (b) =>
-      b.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      b.passenger?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      b.from.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      b.to.toLowerCase().includes(searchTerm.toLowerCase())
+      b.id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      b.passenger?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      b.from?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      b.to?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const filteredUsers = users.filter(
     (u) =>
-      u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      u.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      u.phone.toLowerCase().includes(searchTerm.toLowerCase())
+      u.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      u.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      u.phone?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const getTransportIcon = (type) => {
     return transportIcons[type] || <FaBus />;
+  };
+
+  const getCategoryColor = (type) => {
+    return categoryColors[type] || "bg-gray-500";
   };
 
   const getStatusBadge = (status) => {
@@ -256,10 +367,11 @@ export default function AdminDashboard() {
   };
 
   const getSeatStatus = (available, total) => {
+    if (!total || total === 0) return { color: "bg-gray-500", text: "No Seats", label: "N/A" };
     const ratio = available / total;
-    if (ratio > 0.5) return { color: "bg-green-500", text: "Available" };
-    if (ratio > 0.2) return { color: "bg-yellow-500", text: "Limited" };
-    return { color: "bg-red-500", text: "Almost Full" };
+    if (ratio > 0.5) return { color: "bg-green-500", text: "Available", label: "Good" };
+    if (ratio > 0.2) return { color: "bg-yellow-500", text: "Limited", label: "Few left" };
+    return { color: "bg-red-500", text: "Almost Full", label: "Hurry!" };
   };
 
   // Form Handlers
@@ -297,47 +409,108 @@ export default function AdminDashboard() {
     setIsSubmitting(true);
 
     setTimeout(() => {
-      if (editingTrip) {
-        const updated = trips.map((t) =>
-          t.id === editingTrip.id ? { ...formData, id: editingTrip.id } : t
-        );
-        setTrips(updated);
-        localStorage.setItem("stb-trips", JSON.stringify(updated));
-      } else {
-        const newTrip = {
-          ...formData,
-          id: "TRIP" + Date.now(),
-        };
-        const updated = [...trips, newTrip];
-        setTrips(updated);
-        localStorage.setItem("stb-trips", JSON.stringify(updated));
-      }
+      try {
+        let updatedTrips;
+        if (editingTrip) {
+          updatedTrips = trips.map((t) =>
+            t.id === editingTrip.id ? { ...formData, id: editingTrip.id } : t
+          );
+        } else {
+          const newTrip = {
+            ...formData,
+            id: "TRIP" + Date.now(),
+          };
+          updatedTrips = [...trips, newTrip];
+        }
+        setTrips(updatedTrips);
+        localStorage.setItem("stb-trips", JSON.stringify(updatedTrips));
 
-      calculateStats();
-      setShowModal(false);
-      setIsSubmitting(false);
+        // Recalculate stats
+        const availableSeats = updatedTrips.reduce((sum, t) => sum + (t.availableSeats || 0), 0);
+        setStats(prev => ({
+          ...prev,
+          totalTrips: updatedTrips.length || 0,
+          totalAvailableSeats: availableSeats || 0,
+        }));
+        
+        calculateCategoryStats(updatedTrips);
+
+        setShowModal(false);
+      } catch (err) {
+        console.error("Error saving trip:", err);
+        alert("Failed to save trip. Please try again.");
+      } finally {
+        setIsSubmitting(false);
+      }
     }, 500);
   };
 
   const handleDeleteTrip = (id) => {
     if (window.confirm("Are you sure you want to delete this trip?")) {
-      const updated = trips.filter((t) => t.id !== id);
-      setTrips(updated);
-      localStorage.setItem("stb-trips", JSON.stringify(updated));
-      calculateStats();
+      try {
+        const updated = trips.filter((t) => t.id !== id);
+        setTrips(updated);
+        localStorage.setItem("stb-trips", JSON.stringify(updated));
+        
+        const availableSeats = updated.reduce((sum, t) => sum + (t.availableSeats || 0), 0);
+        setStats(prev => ({
+          ...prev,
+          totalTrips: updated.length || 0,
+          totalAvailableSeats: availableSeats || 0,
+        }));
+        
+        calculateCategoryStats(updated);
+      } catch (err) {
+        console.error("Error deleting trip:", err);
+        alert("Failed to delete trip. Please try again.");
+      }
     }
   };
+
+  // Safe format price function
+  const safeFormatPrice = (amount) => {
+    if (amount === undefined || amount === null || isNaN(amount)) {
+      return "৳ 0";
+    }
+    return formatPrice(amount);
+  };
+
+  // Show error if any
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <div className="text-center max-w-md p-8 bg-white dark:bg-gray-800 rounded-2xl shadow-xl">
+          <FaInfoCircle className="text-5xl text-red-500 mx-auto mb-4" />
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Something went wrong</h2>
+          <p className="text-gray-600 dark:text-gray-400">{error}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="mt-4 inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-white hover:bg-indigo-700"
+          >
+            Refresh Page
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
         <div className="text-center">
           <FaSpinner className="text-5xl text-indigo-600 animate-spin mx-auto" />
-          <p className="mt-4 text-gray-600 dark:text-gray-400">Loading dashboard...</p>
+          <p className="mt-4 text-gray-600 dark:text-gray-400">Loading trips...</p>
         </div>
       </div>
     );
   }
+
+  // Get selected category name
+  const getSelectedCategoryName = () => {
+    if (selectedCategory === "all") return "All";
+    const cat = TRANSPORT_TYPES.find(t => t.id === selectedCategory);
+    return cat ? `${cat.icon} ${cat.name}` : selectedCategory;
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 py-8 dark:bg-gray-900">
@@ -353,17 +526,92 @@ export default function AdminDashboard() {
                 Admin Panel
               </h1>
               <p className="text-gray-600 dark:text-gray-400">
-                Smart Ticket Booking System Management
+                {trips.length} Trips • {TRANSPORT_TYPES.length} Categories
               </p>
             </div>
           </div>
-          <button
-            onClick={logout}
-            className="inline-flex items-center gap-2 rounded-lg border border-red-300 px-4 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/20"
-          >
-            <FaSignOutAlt />
-            Logout
-          </button>
+          <div className="flex items-center gap-3 flex-wrap">
+            <button
+              onClick={reloadAllTrips}
+              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700"
+              title="Reload all trips from data file"
+            >
+              <FaSync />
+              Reload All Trips
+            </button>
+            <button
+              onClick={resetSeatsForNextDay}
+              className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-green-700"
+              title="Reset seats for next day"
+            >
+              <FaClockIcon />
+              Reset Seats
+            </button>
+            <button
+              onClick={logout}
+              className="inline-flex items-center gap-2 rounded-lg border border-red-300 px-4 py-2 text-sm font-medium text-red-600 transition hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/20"
+            >
+              <FaSignOutAlt />
+              Logout
+            </button>
+          </div>
+        </div>
+
+        {/* Category Stats Cards - Click to Filter */}
+        <div className="mb-6">
+          <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+            <FaFilter className="inline mr-2" />
+            Filter by Category:
+          </p>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+            <div
+              onClick={() => setSelectedCategory("all")}
+              className={`cursor-pointer rounded-xl p-4 text-center transition-all hover:scale-105 ${
+                selectedCategory === "all"
+                  ? "bg-indigo-600 text-white shadow-lg ring-2 ring-indigo-400 ring-offset-2"
+                  : "bg-white text-gray-700 hover:bg-indigo-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+              }`}
+            >
+              <FaThLarge className="text-2xl mx-auto mb-1" />
+              <p className="text-xs font-semibold">All Categories</p>
+              <p className="text-lg font-bold">{stats.totalTrips}</p>
+            </div>
+            {categoryStats.map((cat) => (
+              <div
+                key={cat.id}
+                onClick={() => setSelectedCategory(cat.id)}
+                className={`cursor-pointer rounded-xl p-4 text-center transition-all hover:scale-105 ${
+                  selectedCategory === cat.id
+                    ? `${getCategoryColor(cat.id)} text-white shadow-lg ring-2 ring-offset-2`
+                    : "bg-white text-gray-700 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                }`}
+                style={selectedCategory === cat.id ? { ringColor: getCategoryColor(cat.id).replace("bg-", "") } : {}}
+              >
+                <span className="text-2xl block mb-1">{cat.icon}</span>
+                <p className="text-xs font-semibold truncate">{cat.name}</p>
+                <p className="text-lg font-bold">{cat.count}</p>
+                {selectedCategory === cat.id && (
+                  <span className="text-xs opacity-75">✓ Active</span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Active Category Badge */}
+        <div className="flex items-center gap-2 mb-4">
+          <span className="text-sm text-gray-600 dark:text-gray-400">Active filter:</span>
+          <span className="inline-flex items-center gap-1 rounded-full bg-indigo-100 px-3 py-1 text-sm font-semibold text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400">
+            {getSelectedCategoryName()}
+          </span>
+          {selectedCategory !== "all" && (
+            <button
+              onClick={() => setSelectedCategory("all")}
+              className="text-sm text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
+            >
+              <FaTimes className="inline" /> Clear
+            </button>
+          )}
         </div>
 
         {/* Stats Cards */}
@@ -371,39 +619,55 @@ export default function AdminDashboard() {
           <div className="rounded-xl bg-white p-4 shadow-md dark:bg-gray-800">
             <p className="text-xs text-gray-500 dark:text-gray-400">Total Trips</p>
             <p className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">
-              {stats.totalTrips}
+              {filteredTrips.length}
             </p>
           </div>
           <div className="rounded-xl bg-white p-4 shadow-md dark:bg-gray-800">
             <p className="text-xs text-gray-500 dark:text-gray-400">Available Seats</p>
             <p className="text-2xl font-bold text-green-600 dark:text-green-400">
-              {stats.totalAvailableSeats}
+              {filteredTrips.reduce((sum, t) => sum + (t.availableSeats || 0), 0)}
             </p>
           </div>
           <div className="rounded-xl bg-white p-4 shadow-md dark:bg-gray-800">
             <p className="text-xs text-gray-500 dark:text-gray-400">Total Bookings</p>
             <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-              {stats.totalBookings}
+              {stats.totalBookings || 0}
             </p>
           </div>
           <div className="rounded-xl bg-white p-4 shadow-md dark:bg-gray-800">
             <p className="text-xs text-gray-500 dark:text-gray-400">Paid</p>
             <p className="text-2xl font-bold text-green-600 dark:text-green-400">
-              {stats.paidBookings}
+              {stats.paidBookings || 0}
             </p>
           </div>
           <div className="rounded-xl bg-white p-4 shadow-md dark:bg-gray-800">
             <p className="text-xs text-gray-500 dark:text-gray-400">Revenue</p>
             <p className="text-xl font-bold text-purple-600 dark:text-purple-400">
-              {formatPrice(stats.totalRevenue)}
+              {safeFormatPrice(stats.totalRevenue)}
             </p>
           </div>
           <div className="rounded-xl bg-white p-4 shadow-md dark:bg-gray-800">
             <p className="text-xs text-gray-500 dark:text-gray-400">Users</p>
             <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">
-              {stats.totalUsers}
+              {stats.totalUsers || 0}
             </p>
           </div>
+        </div>
+
+        {/* Last Updated */}
+        <div className="flex items-center justify-between text-xs text-gray-400 dark:text-gray-500 mb-4">
+          <span>
+            Showing <strong className="text-indigo-600">{filteredTrips.length}</strong> trips
+            {selectedCategory !== "all" && (
+              <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-indigo-100 px-2 py-0.5 text-xs text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400">
+                {TRANSPORT_TYPES.find(t => t.id === selectedCategory)?.icon} {TRANSPORT_TYPES.find(t => t.id === selectedCategory)?.name}
+              </span>
+            )}
+          </span>
+          <span>
+            <FaClockIcon className="inline mr-1" />
+            Last updated: {lastUpdated.toLocaleTimeString()}
+          </span>
         </div>
 
         {/* Tabs and Search */}
@@ -420,7 +684,7 @@ export default function AdminDashboard() {
                   }`}
                 >
                   <MdAirplaneTicket />
-                  Trips ({stats.totalTrips})
+                  Trips ({filteredTrips.length})
                 </button>
                 <button
                   onClick={() => { setActiveTab("bookings"); setSearchTerm(""); }}
@@ -431,7 +695,7 @@ export default function AdminDashboard() {
                   }`}
                 >
                   <FaTicketAlt />
-                  Bookings ({stats.totalBookings})
+                  Bookings ({stats.totalBookings || 0})
                 </button>
                 <button
                   onClick={() => { setActiveTab("users"); setSearchTerm(""); }}
@@ -442,19 +706,28 @@ export default function AdminDashboard() {
                   }`}
                 >
                   <FaUsers />
-                  Users ({stats.totalUsers})
+                  Users ({stats.totalUsers || 0})
                 </button>
               </div>
 
               <div className="flex items-center gap-3 w-full md:w-auto">
                 {activeTab === "trips" && (
-                  <button
-                    onClick={handleAddTrip}
-                    className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700 hover:shadow-lg"
-                  >
-                    <FaPlus />
-                    Add Trip
-                  </button>
+                  <>
+                    <button
+                      onClick={() => setViewMode(viewMode === "table" ? "grid" : "table")}
+                      className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+                      title={viewMode === "table" ? "Switch to Grid View" : "Switch to Table View"}
+                    >
+                      {viewMode === "table" ? <FaThLarge /> : <FaList />}
+                    </button>
+                    <button
+                      onClick={handleAddTrip}
+                      className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700 hover:shadow-lg"
+                    >
+                      <FaPlus />
+                      Add Trip
+                    </button>
+                  </>
                 )}
 
                 <div className="relative flex-1 md:w-64">
@@ -463,7 +736,7 @@ export default function AdminDashboard() {
                   </div>
                   <input
                     type="text"
-                    placeholder="Search..."
+                    placeholder={`Search ${filteredTrips.length} trips...`}
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="w-full rounded-lg border border-gray-300 bg-gray-50 py-2.5 pl-10 pr-4 text-sm text-gray-900 placeholder-gray-500 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400"
@@ -473,105 +746,201 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          {/* Trips Tab */}
+          {/* Trips Tab - Category Filtered */}
           {activeTab === "trips" && (
-            <div className="p-6 overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead>
-                  <tr className="border-b border-gray-200 dark:border-gray-700">
-                    <th className="px-4 py-3 font-bold text-gray-700 dark:text-gray-300">Trip ID</th>
-                    <th className="px-4 py-3 font-bold text-gray-700 dark:text-gray-300">Route</th>
-                    <th className="px-4 py-3 font-bold text-gray-700 dark:text-gray-300">Operator</th>
-                    <th className="px-4 py-3 font-bold text-gray-700 dark:text-gray-300">Time</th>
-                    <th className="px-4 py-3 font-bold text-gray-700 dark:text-gray-300">Price</th>
-                    <th className="px-4 py-3 font-bold text-gray-700 dark:text-gray-300">Seats</th>
-                    <th className="px-4 py-3 font-bold text-gray-700 dark:text-gray-300 text-center">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredTrips.length === 0 ? (
-                    <tr>
-                      <td colSpan="7" className="px-4 py-12 text-center">
-                        <div className="flex flex-col items-center">
-                          <MdAirplaneTicket className="text-4xl text-gray-300 dark:text-gray-600 mb-3" />
-                          <p className="text-gray-500 dark:text-gray-400 font-medium">No trips found</p>
-                          <button
-                            onClick={handleAddTrip}
-                            className="mt-3 inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+            <div className="p-6">
+              {filteredTrips.length === 0 ? (
+                <div className="text-center py-12">
+                  <div className="flex flex-col items-center">
+                    <MdAirplaneTicket className="text-4xl text-gray-300 dark:text-gray-600 mb-3" />
+                    <p className="text-gray-500 dark:text-gray-400 font-medium">No trips found in this category</p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500">
+                      {selectedCategory !== "all" 
+                        ? `No "${TRANSPORT_TYPES.find(t => t.id === selectedCategory)?.name}" trips available. Try selecting a different category.`
+                        : "Try adjusting your search"}
+                    </p>
+                    {selectedCategory !== "all" && (
+                      <button
+                        onClick={() => setSelectedCategory("all")}
+                        className="mt-3 inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+                      >
+                        View All Categories
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ) : viewMode === "table" ? (
+                /* Table View */
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-200 dark:border-gray-700">
+                        <th className="px-4 py-3 font-bold text-gray-700 dark:text-gray-300">Trip ID</th>
+                        <th className="px-4 py-3 font-bold text-gray-700 dark:text-gray-300">Route</th>
+                        <th className="px-4 py-3 font-bold text-gray-700 dark:text-gray-300">Category</th>
+                        <th className="px-4 py-3 font-bold text-gray-700 dark:text-gray-300">Operator</th>
+                        <th className="px-4 py-3 font-bold text-gray-700 dark:text-gray-300">Time</th>
+                        <th className="px-4 py-3 font-bold text-gray-700 dark:text-gray-300">Price</th>
+                        <th className="px-4 py-3 font-bold text-gray-700 dark:text-gray-300">Seats</th>
+                        <th className="px-4 py-3 font-bold text-gray-700 dark:text-gray-300 text-center">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredTrips.map((trip) => {
+                        const seatStatus = getSeatStatus(trip.availableSeats, trip.totalSeats);
+                        const booked = (trip.totalSeats || 0) - (trip.availableSeats || 0);
+                        const typeInfo = TRANSPORT_TYPES.find(t => t.id === trip.type);
+                        const categoryColor = getCategoryColor(trip.type);
+                        
+                        return (
+                          <tr
+                            key={trip.id}
+                            className="border-b border-gray-100 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-700/50 transition"
                           >
-                            <FaPlus />
-                            Add your first trip
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredTrips.map((trip) => {
-                      const seatStatus = getSeatStatus(trip.availableSeats, trip.totalSeats);
-                      return (
-                        <tr
-                          key={trip.id}
-                          className="border-b border-gray-100 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-700/50 transition"
-                        >
-                          <td className="px-4 py-3 font-mono text-xs text-gray-500 dark:text-gray-400">
-                            {trip.id}
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-2">
-                              <span className="text-lg">{getTransportIcon(trip.type)}</span>
-                              <div>
-                                <p className="font-semibold text-gray-900 dark:text-white">
-                                  {trip.from} → {trip.to}
-                                </p>
-                                <p className="text-xs text-gray-500 dark:text-gray-400">
-                                  {trip.class}
-                                </p>
+                            <td className="px-4 py-3 font-mono text-xs text-gray-500 dark:text-gray-400">
+                              {trip.id}
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2">
+                                <span className="text-lg">{getTransportIcon(trip.type)}</span>
+                                <div>
+                                  <p className="font-semibold text-gray-900 dark:text-white">
+                                    {trip.from} → {trip.to}
+                                  </p>
+                                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                                    {trip.class} • {trip.date}
+                                  </p>
+                                </div>
                               </div>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3 text-gray-900 dark:text-white">
-                            {trip.operator}
-                          </td>
-                          <td className="px-4 py-3 text-gray-600 dark:text-gray-300 text-sm">
-                            <p>{trip.departure}</p>
-                            <p className="text-xs text-gray-400">{trip.duration}</p>
-                          </td>
-                          <td className="px-4 py-3 font-bold text-indigo-600 dark:text-indigo-400">
-                            {formatPrice(trip.pricePerSeat)}
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-2">
-                              <span className="font-semibold text-gray-900 dark:text-white">
-                                {trip.availableSeats}/{trip.totalSeats}
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium text-white ${categoryColor}`}>
+                                {typeInfo?.icon} {typeInfo?.name || trip.type}
                               </span>
-                              <span className={`h-2 w-2 rounded-full ${seatStatus.color}`} />
-                              <span className="text-xs text-gray-500">{seatStatus.text}</span>
+                            </td>
+                            <td className="px-4 py-3 text-gray-900 dark:text-white">
+                              {trip.operator}
+                            </td>
+                            <td className="px-4 py-3 text-gray-600 dark:text-gray-300 text-sm">
+                              <p>{trip.departure}</p>
+                              <p className="text-xs text-gray-400">{trip.duration}</p>
+                            </td>
+                            <td className="px-4 py-3 font-bold text-indigo-600 dark:text-indigo-400">
+                              {safeFormatPrice(trip.pricePerSeat)}
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2">
+                                <div className="flex-1 min-w-[80px]">
+                                  <div className="flex items-center justify-between text-xs">
+                                    <span className="font-semibold text-gray-900 dark:text-white">
+                                      {trip.availableSeats}/{trip.totalSeats}
+                                    </span>
+                                    <span className="text-gray-500">{booked} booked</span>
+                                  </div>
+                                  <div className="mt-1 h-1.5 w-full rounded-full bg-gray-200 dark:bg-gray-700">
+                                    <div
+                                      className={`h-1.5 rounded-full transition-all ${seatStatus.color}`}
+                                      style={{ width: `${((trip.availableSeats || 0) / (trip.totalSeats || 1)) * 100}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex items-center justify-center gap-2">
+                                <button
+                                  onClick={() => handleEditTrip(trip)}
+                                  className="rounded-lg bg-indigo-50 p-2 text-indigo-600 transition hover:bg-indigo-100 dark:bg-indigo-900/20 dark:text-indigo-400 dark:hover:bg-indigo-900/30"
+                                  title="Edit"
+                                >
+                                  <FaEdit />
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteTrip(trip.id)}
+                                  className="rounded-lg bg-red-50 p-2 text-red-600 transition hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/30"
+                                  title="Delete"
+                                >
+                                  <FaTrash />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                /* Grid View */
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {filteredTrips.map((trip) => {
+                    const seatStatus = getSeatStatus(trip.availableSeats, trip.totalSeats);
+                    const booked = (trip.totalSeats || 0) - (trip.availableSeats || 0);
+                    const typeInfo = TRANSPORT_TYPES.find(t => t.id === trip.type);
+                    const categoryColor = getCategoryColor(trip.type);
+                    
+                    return (
+                      <div
+                        key={trip.id}
+                        className="rounded-xl bg-white p-4 shadow-md transition hover:shadow-xl dark:bg-gray-800"
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="text-2xl">{getTransportIcon(trip.type)}</span>
+                            <div>
+                              <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium text-white ${categoryColor}`}>
+                                {typeInfo?.name || trip.type}
+                              </span>
+                              <p className="font-semibold text-gray-900 dark:text-white">
+                                {trip.from} → {trip.to}
+                              </p>
                             </div>
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="flex items-center justify-center gap-2">
-                              <button
-                                onClick={() => handleEditTrip(trip)}
-                                className="rounded-lg bg-indigo-50 p-2 text-indigo-600 transition hover:bg-indigo-100 dark:bg-indigo-900/20 dark:text-indigo-400 dark:hover:bg-indigo-900/30"
-                                title="Edit"
-                              >
-                                <FaEdit />
-                              </button>
-                              <button
-                                onClick={() => handleDeleteTrip(trip.id)}
-                                className="rounded-lg bg-red-50 p-2 text-red-600 transition hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/30"
-                                title="Delete"
-                              >
-                                <FaTrash />
-                              </button>
+                          </div>
+                          <div className="flex gap-1">
+                            <button
+                              onClick={() => handleEditTrip(trip)}
+                              className="rounded-lg bg-indigo-50 p-1.5 text-indigo-600 transition hover:bg-indigo-100 dark:bg-indigo-900/20 dark:text-indigo-400"
+                              title="Edit"
+                            >
+                              <FaEdit className="text-xs" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteTrip(trip.id)}
+                              className="rounded-lg bg-red-50 p-1.5 text-red-600 transition hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400"
+                              title="Delete"
+                            >
+                              <FaTrash className="text-xs" />
+                            </button>
+                          </div>
+                        </div>
+                        
+                        <div className="mt-2 text-sm">
+                          <p className="text-gray-600 dark:text-gray-300">{trip.operator}</p>
+                          <p className="text-gray-500 dark:text-gray-400 text-xs">
+                            {trip.departure} - {trip.arrival} • {trip.duration}
+                          </p>
+                          <p className="text-gray-500 dark:text-gray-400 text-xs">{trip.class} • {trip.date}</p>
+                        </div>
+                        
+                        <div className="mt-3 flex items-center justify-between">
+                          <span className="font-bold text-indigo-600 dark:text-indigo-400">
+                            {safeFormatPrice(trip.pricePerSeat)}
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-gray-500">{trip.availableSeats}/{trip.totalSeats}</span>
+                            <div className="h-1.5 w-16 rounded-full bg-gray-200 dark:bg-gray-700">
+                              <div
+                                className={`h-1.5 rounded-full ${seatStatus.color}`}
+                                style={{ width: `${((trip.availableSeats || 0) / (trip.totalSeats || 1)) * 100}%` }}
+                              />
                             </div>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 
@@ -584,6 +953,7 @@ export default function AdminDashboard() {
                     <th className="px-4 py-3 font-bold text-gray-700 dark:text-gray-300">Booking ID</th>
                     <th className="px-4 py-3 font-bold text-gray-700 dark:text-gray-300">User</th>
                     <th className="px-4 py-3 font-bold text-gray-700 dark:text-gray-300">Route</th>
+                    <th className="px-4 py-3 font-bold text-gray-700 dark:text-gray-300">Seats</th>
                     <th className="px-4 py-3 font-bold text-gray-700 dark:text-gray-300">Fare</th>
                     <th className="px-4 py-3 font-bold text-gray-700 dark:text-gray-300">Status</th>
                     <th className="px-4 py-3 font-bold text-gray-700 dark:text-gray-300 text-center">Action</th>
@@ -592,10 +962,11 @@ export default function AdminDashboard() {
                 <tbody>
                   {filteredBookings.length === 0 ? (
                     <tr>
-                      <td colSpan="6" className="px-4 py-12 text-center">
+                      <td colSpan="7" className="px-4 py-12 text-center">
                         <div className="flex flex-col items-center">
                           <FaTicketAlt className="text-4xl text-gray-300 dark:text-gray-600 mb-3" />
                           <p className="text-gray-500 dark:text-gray-400 font-medium">No bookings found</p>
+                          <p className="text-xs text-gray-400 dark:text-gray-500">Bookings will appear here after users purchase tickets</p>
                         </div>
                       </td>
                     </tr>
@@ -626,8 +997,13 @@ export default function AdminDashboard() {
                               {booking.date}
                             </p>
                           </td>
+                          <td className="px-4 py-3">
+                            <span className="font-medium text-gray-900 dark:text-white">
+                              {booking.seats?.join(", ")}
+                            </span>
+                          </td>
                           <td className="px-4 py-3 font-bold text-indigo-600 dark:text-indigo-400">
-                            {formatPrice(booking.total)}
+                            {safeFormatPrice(booking.total)}
                           </td>
                           <td className="px-4 py-3">
                             <span
@@ -675,6 +1051,7 @@ export default function AdminDashboard() {
                         <div className="flex flex-col items-center">
                           <FaUsers className="text-4xl text-gray-300 dark:text-gray-600 mb-3" />
                           <p className="text-gray-500 dark:text-gray-400 font-medium">No users found</p>
+                          <p className="text-xs text-gray-400 dark:text-gray-500">Users will appear here after registration</p>
                         </div>
                       </td>
                     </tr>
@@ -691,7 +1068,7 @@ export default function AdminDashboard() {
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-3">
                               <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-indigo-500 to-purple-500 text-lg text-white">
-                                {user.name.charAt(0).toUpperCase()}
+                                {user.name?.charAt(0).toUpperCase() || "U"}
                               </div>
                               <p className="font-semibold text-gray-900 dark:text-white">
                                 {user.name}
@@ -724,33 +1101,39 @@ export default function AdminDashboard() {
 
         {/* Quick Actions */}
         <div className="mt-8 grid grid-cols-2 md:grid-cols-4 gap-4">
-          <button className="group rounded-xl bg-white p-4 text-center shadow-md transition hover:shadow-xl hover:-translate-y-1 dark:bg-gray-800">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-indigo-100 text-2xl text-indigo-600 transition group-hover:scale-110 dark:bg-indigo-900/30 dark:text-indigo-400">
-              <FaDownload />
+          <button
+            onClick={reloadAllTrips}
+            className="group rounded-xl bg-white p-4 text-center shadow-md transition hover:shadow-xl hover:-translate-y-1 dark:bg-gray-800"
+          >
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-blue-100 text-2xl text-blue-600 transition group-hover:scale-110 dark:bg-blue-900/30 dark:text-blue-400">
+              <FaSync />
             </div>
-            <p className="mt-2 text-sm font-semibold text-gray-900 dark:text-white">Export Data</p>
-            <p className="text-xs text-gray-500 dark:text-gray-400">CSV Report</p>
+            <p className="mt-2 text-sm font-semibold text-gray-900 dark:text-white">Reload Trips</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">From data file</p>
+          </button>
+          <button
+            onClick={resetSeatsForNextDay}
+            className="group rounded-xl bg-white p-4 text-center shadow-md transition hover:shadow-xl hover:-translate-y-1 dark:bg-gray-800"
+          >
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-green-100 text-2xl text-green-600 transition group-hover:scale-110 dark:bg-green-900/30 dark:text-green-400">
+              <FaClockIcon />
+            </div>
+            <p className="mt-2 text-sm font-semibold text-gray-900 dark:text-white">Reset Seats</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">Next day reset</p>
           </button>
           <button className="group rounded-xl bg-white p-4 text-center shadow-md transition hover:shadow-xl hover:-translate-y-1 dark:bg-gray-800">
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-purple-100 text-2xl text-purple-600 transition group-hover:scale-110 dark:bg-purple-900/30 dark:text-purple-400">
-              <FaPrint />
-            </div>
-            <p className="mt-2 text-sm font-semibold text-gray-900 dark:text-white">Print Report</p>
-            <p className="text-xs text-gray-500 dark:text-gray-400">Summary</p>
-          </button>
-          <button className="group rounded-xl bg-white p-4 text-center shadow-md transition hover:shadow-xl hover:-translate-y-1 dark:bg-gray-800">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-green-100 text-2xl text-green-600 transition group-hover:scale-110 dark:bg-green-900/30 dark:text-green-400">
-              <FaChartLine />
+              <FaChartBar />
             </div>
             <p className="mt-2 text-sm font-semibold text-gray-900 dark:text-white">Analytics</p>
             <p className="text-xs text-gray-500 dark:text-gray-400">View reports</p>
           </button>
           <button className="group rounded-xl bg-white p-4 text-center shadow-md transition hover:shadow-xl hover:-translate-y-1 dark:bg-gray-800">
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-orange-100 text-2xl text-orange-600 transition group-hover:scale-110 dark:bg-orange-900/30 dark:text-orange-400">
-              <FaFilter />
+              <FaDownload />
             </div>
-            <p className="mt-2 text-sm font-semibold text-gray-900 dark:text-white">Advanced Filter</p>
-            <p className="text-xs text-gray-500 dark:text-gray-400">Refine results</p>
+            <p className="mt-2 text-sm font-semibold text-gray-900 dark:text-white">Export</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">CSV Report</p>
           </button>
         </div>
 
@@ -759,10 +1142,10 @@ export default function AdminDashboard() {
           <div className="flex items-start gap-3">
             <FaInfoCircle className="mt-0.5 text-blue-600 dark:text-blue-400" />
             <div>
-              <p className="font-semibold text-blue-900 dark:text-blue-400">Admin Note</p>
+              <p className="font-semibold text-blue-900 dark:text-blue-400">System Status</p>
               <p className="text-sm text-blue-800 dark:text-blue-300">
-                This dashboard displays all trips, bookings, and users in the system. You can add, edit, or delete trips.
-                Additional features like reports, exports, and advanced analytics will be added in future updates.
+                <strong>{trips.length}</strong> trips loaded across <strong>{TRANSPORT_TYPES.length}</strong> categories.
+                Click on any category card above to filter trips by type. Currently viewing: <strong>{getSelectedCategoryName()}</strong>
               </p>
             </div>
           </div>
@@ -870,8 +1253,8 @@ export default function AdminDashboard() {
               </div>
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  <FaBus className="inline mr-1.5 text-indigo-500" />
-                  Transport Type
+                  <FaTag className="inline mr-1.5 text-indigo-500" />
+                  Category
                 </label>
                 <select
                   className="w-full rounded-lg border border-gray-300 bg-gray-50 px-4 py-2.5 text-sm text-gray-900 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
@@ -879,11 +1262,15 @@ export default function AdminDashboard() {
                   value={formData.type}
                   onChange={handleFormChange}
                 >
-                  {TRANSPORT_TYPES.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.icon} {t.name}
-                    </option>
-                  ))}
+                  {TRANSPORT_TYPES && TRANSPORT_TYPES.length > 0 ? (
+                    TRANSPORT_TYPES.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.icon} {t.name}
+                      </option>
+                    ))
+                  ) : (
+                    <option value="bus">🚌 Bus</option>
+                  )}
                 </select>
               </div>
               <div>

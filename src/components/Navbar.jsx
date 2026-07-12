@@ -18,7 +18,8 @@ import {
   FaSun,
   FaBars,
   FaTimes,
-  FaShieldAlt
+  FaShieldAlt,
+  FaUserShield,
 } from "react-icons/fa";
 import { MdDashboard } from "react-icons/md";
 
@@ -87,6 +88,14 @@ export default function Navbar() {
             </NavLink>
           )}
 
+          {/* Admin Login Link - Only when not logged in */}
+          {!user && !isAdmin && (
+            <NavLink to="/admin-login" className={linkClass}>
+              <FaUserShield />
+              Admin Login
+            </NavLink>
+          )}
+
           {/* Dark Mode Toggle */}
           <button
             onClick={toggleTheme}
@@ -101,7 +110,7 @@ export default function Navbar() {
             <div className="ml-3 flex items-center gap-3">
               {user && (
                 <span className="hidden text-sm font-medium text-white/90 lg:inline">
-                  {user.name.split(" ")[0]}
+                  {user.name?.split(" ")[0] || "User"}
                 </span>
               )}
               <button
@@ -190,6 +199,17 @@ export default function Navbar() {
                 Admin
               </NavLink>
             )}
+            {/* Mobile - Admin Login Link */}
+            {!user && !isAdmin && (
+              <NavLink
+                to="/admin-login"
+                className={linkClass}
+                onClick={() => setOpen(false)}
+              >
+                <FaUserShield />
+                Admin Login
+              </NavLink>
+            )}
             <div className="pt-3">
               {user || isAdmin ? (
                 <button
@@ -200,12 +220,14 @@ export default function Navbar() {
                   Logout
                 </button>
               ) : (
-                <Link to="/login" onClick={() => setOpen(false)}>
-                  <button className="flex w-full items-center justify-center gap-2 rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-indigo-700 transition-all hover:bg-indigo-50 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600">
-                    <FaSignInAlt />
-                    Sign In
-                  </button>
-                </Link>
+                <>
+                  <Link to="/login" onClick={() => setOpen(false)}>
+                    <button className="flex w-full items-center justify-center gap-2 rounded-lg bg-white px-4 py-2.5 text-sm font-semibold text-indigo-700 transition-all hover:bg-indigo-50 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600">
+                      <FaSignInAlt />
+                      Sign In
+                    </button>
+                  </Link>
+                </>
               )}
             </div>
           </div>

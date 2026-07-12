@@ -1,17 +1,18 @@
 // src/pages/Ticket.jsx
-// Professional E-Ticket Page with React Icons - All Logic Preserved
+// Complete Working Ticket Page with Firebase Auto ID
 
 import { useEffect, useState, useRef } from "react";
 import { Link, useParams } from "react-router-dom";
 import { formatPrice, TRANSPORT_TYPES } from "../data/transports";
+import { getBookingById } from "../firebase/bookingsService";
 import {
   FaTicketAlt,
   FaCheckCircle,
+  FaTimesCircle,
+  FaExclamationTriangle,
   FaArrowLeft,
   FaArrowRight,
   FaPrint,
-  FaDownload,
-  FaShare,
   FaQrcode,
   FaMapMarkerAlt,
   FaClock,
@@ -20,20 +21,18 @@ import {
   FaEnvelope,
   FaPhone,
   FaMoneyBillWave,
-  FaCreditCard,
   FaInfoCircle,
   FaLightbulb,
   FaPlane,
   FaTrain,
   FaBus,
   FaShip,
-  FaHelicopter,
-  FaSubway,
   FaShieldAlt,
   FaTimes,
   FaCopy,
+  FaSpinner,
 } from "react-icons/fa";
-import { MdConfirmationNumber, MdPayment, MdDashboard } from "react-icons/md";
+import { MdDashboard } from "react-icons/md";
 
 // Transport Icons Mapping
 const transportIcons = {
@@ -41,26 +40,117 @@ const transportIcons = {
   train: <FaTrain />,
   bus: <FaBus />,
   launch: <FaShip />,
-  helicopter: <FaHelicopter />,
-  metro: <FaSubway />,
+  helicopter: <FaPlane />,
+  metro: <FaTrain />,
   speedboat: <FaShip />,
 };
 
 export default function Ticket() {
   const { bookingId } = useParams();
   const [booking, setBooking] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [isExpired, setIsExpired] = useState(false);
+  const [daysRemaining, setDaysRemaining] = useState(0);
   const [copied, setCopied] = useState(false);
   const ticketRef = useRef(null);
 
   useEffect(() => {
-    try {
-      const bookings = JSON.parse(localStorage.getItem("stb-bookings")) ?? [];
-      const found = bookings.find((b) => b.id === bookingId);
-      if (found) setBooking(found);
-    } catch (e) {
-      console.log("Error:", e);
+    const loadTicket = async () => {
+      setLoading(true);
+      setError(null);
+      
+      try {
+        console.log("🔍 Searching for booking ID:", bookingId);
+        
+        // 🔥 STEP 1: Check localStorage FIRST (fastest)
+        const allBookings = JSON.parse(localStorage.getItem("stb-bookings") || "[]");
+        console.log("📦 Total bookings in localStorage:", allBookings.length);
+        
+        let found = allBookings.find(b => b.id === bookingId);
+        
+        // 🔥 STEP 2: If found in localStorage, use it
+        if (found) {
+          console.log("✅ Found in localStorage:", found);
+          setBooking(found);
+          checkExpiry(found);
+          setLoading(false);
+          return;
+        }
+        
+        // 🔥 STEP 3: If not in localStorage, try Firebase
+        console.log("🔄 Not in localStorage, checking Firebase...");
+        try {
+          const result = await getBookingById(bookingId);
+          console.log("📡 Firebase result:", result);
+          
+          if (result && result.ok && result.data) {
+            console.log("✅ Found in Firebase:", result.data);
+            setBooking(result.data);
+            checkExpiry(result.data);
+            
+            // Also save to localStorage for next time
+            const updatedBookings = JSON.parse(localStorage.getItem("stb-bookings") || "[]");
+            // Check if already exists
+            const exists = updatedBookings.some(b => b.id === bookingId);
+            if (!exists) {
+              updatedBookings.push(result.data);
+              localStorage.setItem("stb-bookings", JSON.stringify(updatedBookings));
+              console.log("💾 Saved to localStorage for future");
+            }
+            
+            setLoading(false);
+            return;
+          }
+        } catch (firebaseError) {
+          console.error("Firebase error:", firebaseError);
+        }
+        
+        // 🔥 STEP 4: Try pending booking
+        const pending = JSON.parse(localStorage.getItem("stb-pending-booking") || "null");
+        if (pending && pending.id === bookingId) {
+          console.log("✅ Found in pending:", pending);
+          setBooking(pending);
+          checkExpiry(pending);
+          setLoading(false);
+          return;
+        }
+        
+        // 🔥 STEP 5: Not found anywhere
+        console.log("❌ Booking not found anywhere:", bookingId);
+        setError(`Ticket not found with ID: ${bookingId}`);
+        
+      } catch (err) {
+        console.error("Error loading ticket:", err);
+        setError("Failed to load ticket. Please try again.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (bookingId) {
+      loadTicket();
+    } else {
+      setError("No booking ID provided");
+      setLoading(false);
     }
   }, [bookingId]);
+
+  const checkExpiry = (ticketData) => {
+    if (!ticketData || !ticketData.date) return;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const ticketDate = new Date(ticketData.date);
+    ticketDate.setHours(0, 0, 0, 0);
+
+    const diffTime = ticketDate - today;
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    setDaysRemaining(diffDays);
+    setIsExpired(diffDays < 0);
+  };
 
   const handlePrint = () => {
     window.print();
@@ -76,7 +166,53 @@ export default function Ticket() {
     }
   };
 
-  if (!booking) {
+  const getStatusDisplay = () => {
+    if (isExpired) {
+      return {
+        icon: <FaTimesCircle className="text-red-500 text-xl" />,
+        color: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
+        border: "border-red-500",
+        label: "Expired",
+        message: "This ticket has expired."
+      };
+    } else if (daysRemaining <= 1 && daysRemaining >= 0) {
+      return {
+        icon: <FaExclamationTriangle className="text-yellow-500 text-xl" />,
+        color: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400",
+        border: "border-yellow-500",
+        label: "Expiring Soon",
+        message: `⚠️ Expires in ${daysRemaining} day!`
+      };
+    } else if (daysRemaining > 1) {
+      return {
+        icon: <FaCheckCircle className="text-green-500 text-xl" />,
+        color: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
+        border: "border-green-500",
+        label: "Active",
+        message: `${daysRemaining} days remaining`
+      };
+    }
+    return {
+      icon: <FaCheckCircle className="text-green-500 text-xl" />,
+      color: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
+      border: "border-green-500",
+      label: "Active",
+      message: "Valid ticket"
+    };
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <div className="text-center">
+          <FaSpinner className="text-5xl text-indigo-600 animate-spin mx-auto" />
+          <p className="mt-4 text-gray-600 dark:text-gray-400">Loading ticket...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !booking) {
     return (
       <div className="flex min-h-[80vh] items-center justify-center px-4">
         <div className="w-full max-w-md rounded-2xl bg-white p-8 text-center shadow-xl dark:bg-gray-800 animate-fade-in-up">
@@ -85,64 +221,87 @@ export default function Ticket() {
           </div>
           <h2 className="mt-4 text-2xl font-bold text-gray-900 dark:text-white">Ticket Not Found</h2>
           <p className="mt-2 text-gray-600 dark:text-gray-400">
-            No ticket found with ID "{bookingId}"
+            {error || `No ticket found with ID "${bookingId}"`}
           </p>
-          <Link
-            to="/dashboard"
-            className="mt-6 inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700"
-          >
-            <FaArrowLeft />
-            Back to Dashboard
-          </Link>
+          <div className="mt-4 rounded-lg bg-yellow-50 p-3 text-xs text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-200">
+            <p>💡 Tip: Make sure you're using the correct booking ID</p>
+            <div className="mt-2 flex flex-wrap justify-center gap-2">
+              <span className="font-mono bg-yellow-100 px-2 py-1 rounded text-xs">/ticket/BK-DEMO-001</span>
+            </div>
+          </div>
+          <div className="mt-4 flex flex-wrap justify-center gap-3">
+            <Link
+              to="/dashboard"
+              className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700"
+            >
+              <FaArrowLeft />
+              Back to Dashboard
+            </Link>
+            <Link
+              to="/home"
+              className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-6 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+            >
+              <FaTicketAlt />
+              Book New Ticket
+            </Link>
+          </div>
         </div>
       </div>
     );
   }
 
   const info = TRANSPORT_TYPES.find((t) => t.id === booking.type);
-  const qrData = `ID:${booking.id}|FROM:${booking.from}|TO:${booking.to}|DATE:${booking.date}|SEATS:${booking.seats.join(",")}|TOTAL:${booking.total}`;
+  const qrData = `ID:${booking.id}|FROM:${booking.from}|TO:${booking.to}|DATE:${booking.date}|SEATS:${booking.seats?.join(",")}|TOTAL:${booking.total}`;
   const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrData)}`;
+  const status = getStatusDisplay();
 
   return (
     <div className="min-h-screen bg-gray-50 py-8 dark:bg-gray-900">
       <div className="mx-auto max-w-4xl px-4 sm:px-6">
-        {/* ---------- Header ---------- */}
+        {/* Header */}
         <div className="text-center mb-8 animate-fade-in-up">
-          <div className="inline-flex items-center gap-2 rounded-full bg-green-100 px-4 py-1.5 text-sm font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400">
-            <FaCheckCircle />
-            Booking Confirmed
+          <div className={`inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-sm font-medium ${status.color}`}>
+            {status.icon}
+            {status.label}
           </div>
           <h1 className="mt-4 text-3xl md:text-4xl font-bold text-gray-900 dark:text-white">
             Your E-Ticket
           </h1>
           <p className="mt-2 text-gray-600 dark:text-gray-400">
-            Your booking is confirmed. Download or print your ticket below.
+            {status.message}
           </p>
         </div>
 
-        {/* ---------- Ticket Container (Printable) ---------- */}
+        {/* Ticket Container */}
         <div
           ref={ticketRef}
           id="printable-ticket"
-          className="rounded-2xl bg-white shadow-2xl overflow-hidden dark:bg-gray-800 animate-fade-in-up"
-          style={{ animationDelay: "0.1s" }}
+          className={`rounded-2xl bg-white shadow-2xl overflow-hidden dark:bg-gray-800 animate-fade-in-up ${
+            isExpired ? 'opacity-75' : ''
+          }`}
         >
-          {/* Colored Header */}
-          <div className="bg-gradient-to-r from-indigo-600 to-purple-600 px-6 md:px-10 py-8">
+          {/* Header */}
+          <div className={`px-6 md:px-10 py-8 ${
+            isExpired 
+              ? 'bg-gradient-to-r from-gray-600 to-gray-700' 
+              : daysRemaining <= 1 && daysRemaining >= 0
+                ? 'bg-gradient-to-r from-yellow-600 to-yellow-700'
+                : 'bg-gradient-to-r from-indigo-600 to-purple-600'
+          }`}>
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
               <div className="flex items-center gap-3">
                 <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-white/20 text-3xl text-white">
-                  {transportIcons[booking.type] || info?.icon}
+                  {transportIcons[booking.type] || info?.icon || <FaTicketAlt />}
                 </div>
                 <div>
                   <h2 className="text-2xl md:text-3xl font-bold text-white">
-                    {info?.name}
+                    {info?.name || "Transport"}
                   </h2>
-                  <p className="text-indigo-100">{booking.operator}</p>
+                  <p className="text-white/80">{booking.operator}</p>
                 </div>
               </div>
               <div className="text-right">
-                <p className="text-indigo-200 text-xs font-medium">Booking ID</p>
+                <p className="text-white/70 text-xs font-medium">Booking ID</p>
                 <div className="flex items-center gap-2">
                   <p className="text-xl md:text-2xl font-bold text-white font-mono">
                     {booking.id}
@@ -159,318 +318,108 @@ export default function Ticket() {
             </div>
           </div>
 
-          {/* Main Content */}
+          {/* Body */}
           <div className="px-6 md:px-10 py-8">
-            {/* Route Section */}
+            {/* Route */}
             <div className="mb-8">
               <div className="grid grid-cols-1 md:grid-cols-3 items-center gap-4">
-                {/* From */}
                 <div className="text-center md:text-left">
-                  <p className="flex items-center justify-center md:justify-start gap-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
-                    <FaMapMarkerAlt className="text-indigo-500" />
-                    Departure
-                  </p>
-                  <p className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white mt-1">
-                    {booking.from}
-                  </p>
-                  <p className="flex items-center justify-center md:justify-start gap-1.5 text-sm text-gray-600 dark:text-gray-300 mt-1">
-                    <FaClock className="text-gray-400" />
-                    {booking.departure}
-                  </p>
+                  <p className="text-xs text-gray-500 uppercase">From</p>
+                  <p className="text-2xl font-bold text-gray-900 dark:text-white">{booking.from}</p>
+                  <p className="text-sm text-gray-500">{booking.departure}</p>
                 </div>
-
-                {/* Arrow */}
-                <div className="flex flex-col items-center justify-center">
-                  <div className="flex items-center gap-3 text-2xl text-indigo-400">
-                    <span>●</span>
-                    <FaArrowRight />
-                    <span>●</span>
-                  </div>
-                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mt-1">
-                    {booking.duration}
-                  </p>
+                <div className="text-center">
+                  <div className="text-2xl text-indigo-400">→</div>
+                  <p className="text-xs text-gray-500">{booking.duration}</p>
                 </div>
-
-                {/* To */}
                 <div className="text-center md:text-right">
-                  <p className="flex items-center justify-center md:justify-end gap-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
-                    <FaMapMarkerAlt className="text-purple-500" />
-                    Arrival
-                  </p>
-                  <p className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white mt-1">
-                    {booking.to}
-                  </p>
-                  <p className="flex items-center justify-center md:justify-end gap-1.5 text-sm text-gray-600 dark:text-gray-300 mt-1">
-                    <FaClock className="text-gray-400" />
-                    {booking.arrival}
-                  </p>
+                  <p className="text-xs text-gray-500 uppercase">To</p>
+                  <p className="text-2xl font-bold text-gray-900 dark:text-white">{booking.to}</p>
+                  <p className="text-sm text-gray-500">{booking.arrival}</p>
                 </div>
               </div>
             </div>
 
             <div className="h-px bg-gray-200 dark:bg-gray-700" />
 
-            {/* Booking Details */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6 my-6">
+            {/* Details */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 my-6">
               <div>
-                <p className="flex items-center gap-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
-                  <FaUser className="text-indigo-500" />
-                  Passenger
-                </p>
-                <p className="text-base font-bold text-gray-900 dark:text-white mt-1">
-                  {booking.passenger?.name}
-                </p>
+                <p className="text-xs text-gray-500 uppercase">Passenger</p>
+                <p className="font-bold text-gray-900 dark:text-white">{booking.passenger?.name}</p>
               </div>
               <div>
-                <p className="flex items-center gap-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
-                  <FaCalendarAlt className="text-indigo-500" />
-                  Date
-                </p>
-                <p className="text-base font-bold text-gray-900 dark:text-white mt-1">
+                <p className="text-xs text-gray-500 uppercase">Date</p>
+                <p className={`font-bold ${isExpired ? 'text-red-500 line-through' : 'text-gray-900 dark:text-white'}`}>
                   {booking.date}
                 </p>
               </div>
               <div>
-                <p className="flex items-center gap-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
-                  <FaTicketAlt className="text-indigo-500" />
-                  Seats
-                </p>
-                <p className="text-base font-bold text-gray-900 dark:text-white mt-1">
-                  {booking.seats.join(", ")}
-                </p>
+                <p className="text-xs text-gray-500 uppercase">Seats</p>
+                <p className="font-bold text-gray-900 dark:text-white">{booking.seats?.join(", ")}</p>
               </div>
               <div>
-                <p className="flex items-center gap-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
-                  <FaShieldAlt className="text-indigo-500" />
-                  Class
-                </p>
-                <p className="text-base font-bold text-gray-900 dark:text-white mt-1">
-                  {booking.class}
-                </p>
+                <p className="text-xs text-gray-500 uppercase">Class</p>
+                <p className="font-bold text-gray-900 dark:text-white">{booking.class}</p>
               </div>
             </div>
 
             <div className="h-px bg-gray-200 dark:bg-gray-700" />
 
-            {/* QR Code & Fare */}
+            {/* QR & Fare */}
             <div className="grid grid-cols-1 md:grid-cols-5 gap-8 items-center mt-6">
-              {/* QR Code */}
               <div className="md:col-span-2 flex justify-center">
-                <div className="rounded-xl bg-gray-50 p-6 dark:bg-gray-700 border-2 border-gray-200 dark:border-gray-600">
-                  <img
-                    src={qrImageUrl}
-                    alt="QR Code"
-                    className="w-48 h-48"
-                    onError={(e) => {
-                      e.target.onerror = null;
-                      e.target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Crect width='200' height='200' fill='%23f3f4f6'/%3E%3Ctext x='50' y='100' font-size='16' fill='%236b7280' text-anchor='middle'%3EQR Code%3C/text%3E%3C/svg%3E";
-                    }}
-                  />
-                  <p className="mt-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400">
-                    <FaQrcode className="inline mr-1" />
-                    Scan QR Code
-                  </p>
+                <div className="rounded-xl bg-gray-50 p-4 dark:bg-gray-700">
+                  <img src={qrImageUrl} alt="QR Code" className="w-48 h-48" />
+                  <p className="mt-2 text-center text-xs text-gray-500">Scan QR Code</p>
                 </div>
               </div>
-
-              {/* Fare Details */}
               <div className="md:col-span-3">
-                <div className="rounded-xl bg-gradient-to-br from-indigo-50 to-purple-50 p-6 dark:from-indigo-900/20 dark:to-purple-900/20 border border-indigo-200 dark:border-indigo-700">
-                  <h4 className="flex items-center gap-2 font-bold text-gray-900 dark:text-white mb-4">
-                    <FaMoneyBillWave className="text-indigo-500" />
-                    Fare Details
-                  </h4>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between text-gray-700 dark:text-gray-300">
-                      <span>
-                        {booking.seats.length} seat{booking.seats.length > 1 ? 's' : ''} × {formatPrice(booking.pricePerSeat)}
-                      </span>
-                      <span className="font-bold">{formatPrice(booking.total)}</span>
-                    </div>
-                    <div className="flex justify-between text-gray-500 dark:text-gray-400 text-xs">
-                      <span>Tax & Charges</span>
-                      <span>Included</span>
-                    </div>
+                <div className="rounded-xl bg-indigo-50 p-4 dark:bg-indigo-900/20">
+                  <div className="flex justify-between text-sm">
+                    <span>{booking.seats?.length} seats × {formatPrice(booking.pricePerSeat)}</span>
+                    <span className="font-bold">{formatPrice(booking.total)}</span>
                   </div>
-                  <div className="h-px bg-indigo-200 dark:bg-indigo-700 my-4" />
-                  <div className="flex justify-between font-bold text-lg text-gray-900 dark:text-white">
-                    <span>Total Paid</span>
-                    <span className="text-2xl text-indigo-600 dark:text-indigo-400">
-                      {formatPrice(booking.total)}
-                    </span>
+                  <div className="h-px bg-indigo-200 my-2" />
+                  <div className="flex justify-between font-bold">
+                    <span>Total</span>
+                    <span className="text-xl text-indigo-600">{formatPrice(booking.total)}</span>
                   </div>
                 </div>
-
-                {/* Payment Info */}
-                <div className="mt-4 rounded-xl bg-blue-50 dark:bg-blue-900/20 p-4 border border-blue-200 dark:border-blue-700">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                    <div>
-                      <span className="font-medium text-gray-700 dark:text-gray-300">Payment Method:</span>
-                      <span className="ml-1 text-gray-900 dark:text-white font-semibold">
-                        {booking.payment?.method}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="font-medium text-gray-700 dark:text-gray-300">Transaction ID:</span>
-                      <span className="ml-1 font-mono text-gray-900 dark:text-white">
-                        {booking.payment?.trxId}
-                      </span>
-                    </div>
-                    <div className="sm:col-span-2">
-                      <span className="font-medium text-gray-700 dark:text-gray-300">Payment Time:</span>
-                      <span className="ml-1 text-gray-900 dark:text-white">
-                        {new Date(booking.payment?.paidAt).toLocaleString()}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="h-px bg-gray-200 dark:bg-gray-700 my-6" />
-
-            {/* Passenger Contact */}
-            <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-4 border border-gray-200 dark:border-gray-600">
-              <h4 className="flex items-center gap-2 font-bold text-gray-900 dark:text-white mb-3 text-sm">
-                <FaUser className="text-indigo-500" />
-                Passenger Information
-              </h4>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                <div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Name</p>
-                  <p className="font-bold text-gray-900 dark:text-white">
-                    {booking.passenger?.name}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    <FaEnvelope className="inline mr-1" /> Email
-                  </p>
-                  <p className="font-bold text-gray-900 dark:text-white break-all">
-                    {booking.passenger?.email}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    <FaPhone className="inline mr-1" /> Phone
-                  </p>
-                  <p className="font-bold text-gray-900 dark:text-white">
-                    {booking.passenger?.phone}
-                  </p>
+                <div className="mt-3 text-xs text-gray-500">
+                  <p>Payment: {booking.payment?.method}</p>
+                  <p>TrxID: {booking.payment?.trxId}</p>
                 </div>
               </div>
             </div>
 
             {/* Footer */}
-            <div className="mt-8 pt-6 border-t border-gray-200 dark:border-gray-700 text-center text-xs text-gray-500 dark:text-gray-400">
-              <p className="font-semibold text-gray-700 dark:text-gray-300">
-                Thank you for choosing Smart Ticket Booking!
-              </p>
-              <p className="mt-1">Please present this ticket at the counter or scan the QR code above.</p>
-              <p className="mt-3 font-bold text-indigo-600 dark:text-indigo-400">
-                📞 For support: 01706730155
-              </p>
+            <div className="mt-8 pt-4 border-t text-center text-xs text-gray-400">
+              <p>Thank you for choosing Smart Ticket Booking!</p>
+              <p className="mt-1">📞 Support: 01706730155</p>
             </div>
           </div>
         </div>
 
-        {/* ---------- Action Buttons ---------- */}
-        <div className="mt-8 flex flex-wrap justify-center gap-4 animate-fade-in-up" style={{ animationDelay: "0.2s" }}>
-          <button
-            onClick={handlePrint}
-            className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-indigo-600 to-purple-600 px-6 py-2.5 text-sm font-semibold text-white transition hover:shadow-lg hover:shadow-indigo-500/25 hover:scale-105"
-          >
-            <FaPrint />
-            Print Ticket
+        {/* Actions */}
+        <div className="mt-6 flex flex-wrap justify-center gap-4">
+          <button onClick={handlePrint} className="btn-primary">
+            <FaPrint /> Print Ticket
           </button>
-          <Link
-            to="/dashboard"
-            className="inline-flex items-center gap-2 rounded-lg border-2 border-gray-300 px-6 py-2.5 text-sm font-semibold text-gray-700 transition hover:border-indigo-600 hover:bg-indigo-50 hover:text-indigo-600 dark:border-gray-600 dark:text-gray-300 dark:hover:border-indigo-400 dark:hover:bg-indigo-900/20 dark:hover:text-indigo-400"
-          >
-            <MdDashboard />
-            Dashboard
+          <Link to="/dashboard" className="btn-outline">
+            <MdDashboard /> Dashboard
           </Link>
-          <Link
-            to="/home"
-            className="inline-flex items-center gap-2 rounded-lg bg-white px-6 py-2.5 text-sm font-semibold text-indigo-600 shadow-md transition hover:shadow-lg hover:scale-105 dark:bg-gray-800 dark:text-indigo-400 dark:hover:bg-gray-700"
-          >
-            <FaTicketAlt />
-            Book Another
+          <Link to="/home" className="btn-outline">
+            <FaTicketAlt /> Book Another
           </Link>
-        </div>
-
-        {/* ---------- Tip ---------- */}
-        <div className="mt-6 rounded-xl border-l-4 border-amber-500 bg-amber-50 p-4 dark:border-amber-400 dark:bg-amber-900/20 animate-fade-in-up" style={{ animationDelay: "0.3s" }}>
-          <div className="flex items-start gap-3">
-            <FaLightbulb className="mt-0.5 text-xl text-amber-600 dark:text-amber-400" />
-            <div>
-              <p className="font-semibold text-amber-900 dark:text-amber-400">Quick Tip</p>
-              <p className="text-sm text-amber-800 dark:text-amber-300">
-                Save or print this e-ticket. You'll need it for verification at the counter or boarding.
-                You can also show the QR code on your phone for scanning.
-              </p>
-            </div>
-          </div>
         </div>
       </div>
 
-      {/* Print Styles */}
-      <style>{`
-        @media print {
-          body * {
-            visibility: hidden;
-          }
-          #printable-ticket,
-          #printable-ticket * {
-            visibility: visible;
-          }
-          #printable-ticket {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 100%;
-            box-shadow: none !important;
-            border-radius: 0 !important;
-          }
-          #printable-ticket .bg-gradient-to-r {
-            background: #4f46e5 !important;
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-          }
-          #printable-ticket .bg-gray-50 {
-            background: #f9fafb !important;
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-          }
-          #printable-ticket .bg-gradient-to-br {
-            background: #eef2ff !important;
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-          }
-          #printable-ticket img {
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-          }
-          @page {
-            margin: 0.5cm;
-            size: A4 portrait;
-          }
-        }
-      `}</style>
-
-      {/* Animations CSS */}
       <style jsx>{`
         @keyframes fadeInUp {
-          from {
-            opacity: 0;
-            transform: translateY(20px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
+          from { opacity: 0; transform: translateY(20px); }
+          to { opacity: 1; transform: translateY(0); }
         }
-
         .animate-fade-in-up {
           animation: fadeInUp 0.6s ease-out forwards;
         }

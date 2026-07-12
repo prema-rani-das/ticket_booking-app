@@ -1,23 +1,21 @@
 // src/pages/Login.jsx
-// Professional Login Page with React Icons
-
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { 
-  FaTicketAlt, 
-  FaEnvelope, 
-  FaLock, 
-  FaEye, 
+import {
+  FaTicketAlt,
+  FaEnvelope,
+  FaLock,
+  FaEye,
   FaEyeSlash,
   FaSignInAlt,
   FaUserPlus,
-  FaShieldAlt,
-  FaArrowRight
+  FaGoogle,
+  FaArrowRight,
 } from "react-icons/fa";
 
 export default function Login() {
-  const { login } = useAuth();
+  const { login, loginWithGoogle } = useAuth();
   const navigate = useNavigate();
 
   const [form, setForm] = useState({ email: "", password: "" });
@@ -37,8 +35,10 @@ export default function Login() {
     }
 
     setLoading(true);
+    setError("");
+
     try {
-      const res = login(form);
+      const res = await login(form);
       if (!res.ok) {
         setError(res.message);
         setLoading(false);
@@ -46,15 +46,31 @@ export default function Login() {
       }
       navigate("/dashboard");
     } catch (err) {
-      setError("Something went wrong. Please try again.");
+      setError("Login failed. Please try again.");
+      setLoading(false);
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await loginWithGoogle();
+      if (res.ok) {
+        navigate("/dashboard");
+      } else {
+        setError(res.message);
+      }
+    } catch (err) {
+      setError("Google login failed. Please try again.");
+    } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="flex min-h-[80vh] items-center justify-center bg-gray-50 px-4 py-12 dark:bg-gray-900">
-      <div className="w-full max-w-md animate-fadeUp rounded-2xl bg-white p-8 shadow-xl dark:bg-gray-800 dark:shadow-2xl">
-        
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4 py-12 dark:bg-gray-900">
+      <div className="w-full max-w-md animate-fade-in-up rounded-2xl bg-white p-8 shadow-xl dark:bg-gray-800">
         {/* Header */}
         <div className="text-center">
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-indigo-100 text-3xl text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400">
@@ -68,7 +84,7 @@ export default function Login() {
           </p>
         </div>
 
-        {/* Error Message */}
+        {/* Error */}
         {error && (
           <div className="mt-6 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-400">
             <span className="font-medium">Error:</span> {error}
@@ -77,32 +93,27 @@ export default function Login() {
 
         {/* Form */}
         <form className="mt-6 space-y-5" onSubmit={(e) => e.preventDefault()}>
-          {/* Email Field */}
           <div>
             <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              <FaEnvelope className="inline mr-1.5 text-indigo-500" />
               Email Address
             </label>
-            <div className="relative">
-              <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                <FaEnvelope className="text-gray-400 dark:text-gray-500" />
-              </div>
-              <input
-                className="w-full rounded-lg border border-gray-300 bg-gray-50 py-2.5 pl-10 pr-4 text-sm text-gray-900 placeholder-gray-500 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 dark:focus:border-indigo-400"
-                type="email"
-                name="email"
-                placeholder="you@example.com"
-                value={form.email}
-                onChange={handleChange}
-                onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
-                disabled={loading}
-              />
-            </div>
+            <input
+              className="w-full rounded-lg border border-gray-300 bg-gray-50 px-4 py-2.5 text-sm text-gray-900 placeholder-gray-500 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400"
+              type="email"
+              name="email"
+              placeholder="you@example.com"
+              value={form.email}
+              onChange={handleChange}
+              onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+              disabled={loading}
+            />
           </div>
 
-          {/* Password Field */}
           <div>
             <div className="flex items-center justify-between">
               <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                <FaLock className="inline mr-1.5 text-indigo-500" />
                 Password
               </label>
               <Link
@@ -113,11 +124,8 @@ export default function Login() {
               </Link>
             </div>
             <div className="relative">
-              <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                <FaLock className="text-gray-400 dark:text-gray-500" />
-              </div>
               <input
-                className="w-full rounded-lg border border-gray-300 bg-gray-50 py-2.5 pl-10 pr-12 text-sm text-gray-900 placeholder-gray-500 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400 dark:focus:border-indigo-400"
+                className="w-full rounded-lg border border-gray-300 bg-gray-50 px-4 py-2.5 pr-12 text-sm text-gray-900 placeholder-gray-500 focus:border-indigo-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder-gray-400"
                 type={showPass ? "text" : "password"}
                 name="password"
                 placeholder="Enter your password"
@@ -129,8 +137,7 @@ export default function Login() {
               <button
                 type="button"
                 onClick={() => setShowPass(!showPass)}
-                className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-                title={showPass ? "Hide password" : "Show password"}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
               >
                 {showPass ? <FaEyeSlash /> : <FaEye />}
               </button>
@@ -141,7 +148,6 @@ export default function Login() {
           <div className="flex items-center">
             <input
               id="remember-me"
-              name="remember-me"
               type="checkbox"
               className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 dark:border-gray-600 dark:bg-gray-700"
             />
@@ -154,7 +160,7 @@ export default function Login() {
           <button
             onClick={handleSubmit}
             disabled={loading}
-            className="flex w-full items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 dark:bg-indigo-500 dark:hover:bg-indigo-600"
+            className="flex w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-indigo-600 to-purple-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:shadow-lg hover:shadow-indigo-500/25 hover:scale-[1.02] disabled:opacity-50"
           >
             {loading ? (
               "Signing in..."
@@ -165,6 +171,28 @@ export default function Login() {
                 <FaArrowRight className="text-xs" />
               </>
             )}
+          </button>
+
+          {/* Divider */}
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-gray-300 dark:border-gray-600"></div>
+            </div>
+            <div className="relative flex justify-center text-sm">
+              <span className="bg-white px-4 text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+                Or continue with
+              </span>
+            </div>
+          </div>
+
+          {/* Google Button */}
+          <button
+            onClick={handleGoogleLogin}
+            disabled={loading}
+            className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600"
+          >
+            <FaGoogle className="text-red-500" />
+            Continue with Google
           </button>
         </form>
 
@@ -180,25 +208,31 @@ export default function Login() {
               Create Account
             </Link>
           </p>
-          <p className="text-gray-600 dark:text-gray-400">
-            Are you an admin?{" "}
-            <Link
-              to="/admin-login"
-              className="inline-flex items-center gap-1 font-semibold text-purple-600 hover:text-purple-500 dark:text-purple-400 dark:hover:text-purple-300"
-            >
-              <FaShieldAlt className="text-xs" />
-              Admin Login
-            </Link>
-          </p>
         </div>
 
-        {/* Demo Credentials (Optional) */}
+        {/* Demo Credentials */}
         <div className="mt-6 rounded-lg border border-dashed border-gray-300 bg-gray-50 p-3 dark:border-gray-600 dark:bg-gray-700/50">
           <p className="text-center text-xs text-gray-500 dark:text-gray-400">
             <span className="font-medium">Demo:</span> demo@smartticket.com / password123
           </p>
         </div>
       </div>
+
+      <style jsx>{`
+        @keyframes fadeInUp {
+          from {
+            opacity: 0;
+            transform: translateY(20px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        .animate-fade-in-up {
+          animation: fadeInUp 0.6s ease-out forwards;
+        }
+      `}</style>
     </div>
   );
 }

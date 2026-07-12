@@ -1,5 +1,5 @@
 // src/pages/Booking.jsx
-// Professional Booking Page with Animations - React Icons Version
+// Complete Working Booking Page - Full Updated Code
 
 import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -31,6 +31,7 @@ import {
   FaSubway,
   FaExclamationTriangle,
   FaShieldAlt,
+  FaSignInAlt,
 } from "react-icons/fa";
 import { MdConfirmationNumber, MdDashboard } from "react-icons/md";
 
@@ -87,6 +88,92 @@ export default function Booking() {
     return list;
   }, [trip]);
 
+  // ✅ Proceed to Payment with proper ID handling
+  const proceedToPayment = () => {
+    // 🔴 First check: Is user logged in?
+    if (!user) {
+      setError("Please login to book tickets!");
+      setTimeout(() => {
+        navigate("/login", { state: { from: `/booking/${tripId}` } });
+      }, 1500);
+      return;
+    }
+
+    if (!date) {
+      setError("Please select a travel date!");
+      return;
+    }
+    if (date < todayStr()) {
+      setError("Cannot book tickets for past dates!");
+      return;
+    }
+    if (selectedSeats.length === 0) {
+      setError("Please select at least 1 seat!");
+      return;
+    }
+
+    setIsSubmitting(true);
+    
+    // 🔥 Generate a consistent ID
+    const bookingId = "BK-" + Date.now();
+    
+    const pendingBooking = {
+      id: bookingId,
+      tripId: trip.id,
+      type: trip.type,
+      operator: trip.operator,
+      from: trip.from,
+      to: trip.to,
+      departure: trip.departure,
+      arrival: trip.arrival,
+      duration: trip.duration,
+      class: trip.class,
+      date,
+      seats: [...selectedSeats].sort(),
+      pricePerSeat: trip.price,
+      total: selectedSeats.length * trip.price,
+      passenger: { 
+        id: user.id, 
+        name: user.name, 
+        email: user.email, 
+        phone: user.phone 
+      },
+      status: "pending",
+      createdAt: new Date().toISOString(),
+    };
+    
+    console.log("✅ Pending booking created:", bookingId);
+    localStorage.setItem("stb-pending-booking", JSON.stringify(pendingBooking));
+    
+    // Also add to bookings list for immediate access
+    const allBookings = JSON.parse(localStorage.getItem("stb-bookings") || "[]");
+    allBookings.push({ ...pendingBooking });
+    localStorage.setItem("stb-bookings", JSON.stringify(allBookings));
+    
+    navigate("/payment");
+  };
+
+  const toggleSeat = (seat) => {
+    setError("");
+    if (bookedSeats.includes(seat)) return;
+    setSelectedSeats((prev) => {
+      if (prev.includes(seat)) return prev.filter((s) => s !== seat);
+      if (prev.length >= 6) {
+        setError("You can book a maximum of 6 seats at a time");
+        return prev;
+      }
+      return [...prev, seat];
+    });
+  };
+
+  const seatClass = (seat) => {
+    if (bookedSeats.includes(seat))
+      return "cursor-not-allowed bg-gray-300 text-gray-500 line-through dark:bg-gray-700 dark:text-gray-500 hover:scale-100";
+    if (selectedSeats.includes(seat))
+      return "bg-gradient-to-r from-indigo-600 to-purple-600 text-white ring-2 ring-indigo-400 ring-offset-2 scale-105 shadow-lg";
+    return "bg-white text-gray-700 hover:bg-indigo-50 hover:border-indigo-400 border-2 border-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-600 dark:hover:bg-indigo-900/30 dark:hover:border-indigo-400";
+  };
+
   if (!trip) {
     return (
       <div className="flex min-h-[80vh] items-center justify-center px-4">
@@ -111,67 +198,6 @@ export default function Booking() {
   const info = TRANSPORT_TYPES.find((t) => t.id === trip.type);
   const total = selectedSeats.length * trip.price;
 
-  const toggleSeat = (seat) => {
-    setError("");
-    if (bookedSeats.includes(seat)) return;
-    setSelectedSeats((prev) => {
-      if (prev.includes(seat)) return prev.filter((s) => s !== seat);
-      if (prev.length >= 6) {
-        setError("You can book a maximum of 6 seats at a time");
-        return prev;
-      }
-      return [...prev, seat];
-    });
-  };
-
-  const proceedToPayment = () => {
-    if (!date) {
-      setError("Please select a travel date");
-      return;
-    }
-    if (date < todayStr()) {
-      setError("Cannot book tickets for past dates");
-      return;
-    }
-    if (selectedSeats.length === 0) {
-      setError("Please select at least 1 seat");
-      return;
-    }
-
-    setIsSubmitting(true);
-    setTimeout(() => {
-      const pendingBooking = {
-        id: "BK-" + Date.now(),
-        tripId: trip.id,
-        type: trip.type,
-        operator: trip.operator,
-        from: trip.from,
-        to: trip.to,
-        departure: trip.departure,
-        arrival: trip.arrival,
-        duration: trip.duration,
-        class: trip.class,
-        date,
-        seats: [...selectedSeats].sort(),
-        pricePerSeat: trip.price,
-        total,
-        passenger: { id: user.id, name: user.name, email: user.email, phone: user.phone },
-        status: "pending",
-        createdAt: new Date().toISOString(),
-      };
-      localStorage.setItem("stb-pending-booking", JSON.stringify(pendingBooking));
-      navigate("/payment");
-    }, 600);
-  };
-
-  const seatClass = (seat) => {
-    if (bookedSeats.includes(seat))
-      return "cursor-not-allowed bg-gray-300 text-gray-500 line-through dark:bg-gray-700 dark:text-gray-500 hover:scale-100";
-    if (selectedSeats.includes(seat))
-      return "bg-gradient-to-r from-indigo-600 to-purple-600 text-white ring-2 ring-indigo-400 ring-offset-2 scale-105 shadow-lg";
-    return "bg-white text-gray-700 hover:bg-indigo-50 hover:border-indigo-400 border-2 border-gray-300 dark:bg-gray-800 dark:text-gray-200 dark:border-gray-600 dark:hover:bg-indigo-900/30 dark:hover:border-indigo-400";
-  };
-
   return (
     <div className="min-h-screen bg-gray-50 py-8 dark:bg-gray-900">
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
@@ -183,6 +209,24 @@ export default function Booking() {
           <FaArrowLeft />
           Back to all trips
         </Link>
+
+        {/* ✅ User Not Logged In Warning */}
+        {!user && (
+          <div className="mt-4 rounded-xl border-l-4 border-red-500 bg-red-50 p-4 dark:bg-red-900/20 animate-fade-in-up">
+            <div className="flex items-start gap-3">
+              <FaSignInAlt className="mt-0.5 text-xl text-red-600 dark:text-red-400" />
+              <div>
+                <p className="font-semibold text-red-900 dark:text-red-400">Please Login First!</p>
+                <p className="text-sm text-red-800 dark:text-red-300">
+                  You need to be logged in to book tickets. 
+                  <Link to="/login" className="ml-2 font-semibold underline hover:no-underline">
+                    Click here to login
+                  </Link>
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="mt-4 grid gap-6 lg:grid-cols-5">
           {/* ---------- Left: Trip Info + Date + Summary ---------- */}
@@ -275,8 +319,14 @@ export default function Booking() {
                 <div className="flex justify-between border-b border-gray-100 pb-2 dark:border-gray-700">
                   <span className="text-gray-600 dark:text-gray-400">Passenger</span>
                   <span className="font-semibold text-gray-900 dark:text-white">
-                    <FaUser className="inline mr-1 text-xs text-indigo-500" />
-                    {user?.name}
+                    {user ? (
+                      <>
+                        <FaUser className="inline mr-1 text-xs text-indigo-500" />
+                        {user.name}
+                      </>
+                    ) : (
+                      <span className="text-red-500">Not logged in</span>
+                    )}
                   </span>
                 </div>
                 <div className="flex justify-between border-b border-gray-100 pb-2 dark:border-gray-700">

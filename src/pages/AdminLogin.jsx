@@ -35,20 +35,25 @@ export default function AdminLogin() {
     setError("");
   };
 
-  const handleSubmit = () => {
-    if (!form.username.trim()) return setError("Please enter username!");
+  const handleSubmit = async () => {
+    if (!form.username.trim()) return setError("Please enter username or email!");
     if (!form.password) return setError("Please enter password!");
 
     setLoading(true);
-    setTimeout(() => {
-      const res = adminLogin(form);
+    setError("");
+    
+    try {
+      const res = await adminLogin(form);
       if (!res.ok) {
         setError(res.message);
-      } else {
-        navigate("/admin");
+        setLoading(false);
+        return;
       }
+      navigate("/admin");
+    } catch (err) {
+      setError("Something went wrong! Please try again.");
       setLoading(false);
-    }, 1000);
+    }
   };
 
   return (
@@ -82,11 +87,11 @@ export default function AdminLogin() {
               </div>
             )}
 
-            {/* Username */}
+            {/* Username / Email */}
             <div>
               <label className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-300">
                 <FaUser className="text-red-400" />
-                Username
+                Username or Email
               </label>
               <div className="relative">
                 <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
@@ -95,7 +100,7 @@ export default function AdminLogin() {
                 <input
                   className="w-full rounded-lg bg-white/10 border border-white/10 backdrop-blur pl-10 pr-4 py-3 text-white placeholder-gray-400 focus:border-red-500/50 focus:ring-2 focus:ring-red-500/30 outline-none transition"
                   name="username"
-                  placeholder="Enter username"
+                  placeholder="admin or admin@smartticket.com"
                   value={form.username}
                   onChange={handleChange}
                   onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
@@ -155,20 +160,22 @@ export default function AdminLogin() {
               )}
             </button>
 
-            {/* Demo Credentials */}
+            {/* Demo Credentials - Updated */}
             <div className="rounded-xl bg-blue-500/10 border border-blue-500/30 backdrop-blur px-4 py-3 text-xs text-blue-200">
               <div className="flex items-center gap-2 mb-2">
                 <FaInfoCircle className="text-blue-400" />
                 <span className="font-semibold">Demo Credentials:</span>
               </div>
-              <div className="grid grid-cols-2 gap-1 text-center">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-center">
                 <div className="bg-blue-900/30 rounded px-2 py-1">
-                  <span className="text-blue-300">Username</span>
-                  <p className="font-mono text-white">admin</p>
+                  <span className="text-blue-300">Static Admin</span>
+                  <p className="font-mono text-white text-xs">admin</p>
+                  <p className="text-blue-400 text-[10px]">Password: admin123</p>
                 </div>
                 <div className="bg-blue-900/30 rounded px-2 py-1">
-                  <span className="text-blue-300">Password</span>
-                  <p className="font-mono text-white">admin123</p>
+                  <span className="text-blue-300">Firebase Admin</span>
+                  <p className="font-mono text-white text-xs">admin@smartticket.com</p>
+                  <p className="text-blue-400 text-[10px]">Password: admin123</p>
                 </div>
               </div>
             </div>

@@ -1,10 +1,11 @@
 // src/pages/UserDashboard.jsx
-// Professional User Dashboard with React Icons - All Logic Preserved
+// Updated with Firebase Auto ID
 
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { formatPrice, TRANSPORT_TYPES } from "../data/transports";
+import { getUserBookings, listenUserBookings } from "../firebase/bookingsService";
 import {
   FaUser,
   FaTicketAlt,
@@ -56,32 +57,78 @@ export default function UserDashboard() {
   });
 
   useEffect(() => {
-    try {
-      const allBookings = JSON.parse(localStorage.getItem("stb-bookings")) ?? [];
-      const userBookings = allBookings.filter((b) => b.passenger?.id === user?.id);
-      setBookings(userBookings.reverse());
+    if (!user) return;
 
-      // Calculate stats
-      const paid = userBookings.filter((b) => b.status === "paid").length;
-      const pending = userBookings.filter((b) => b.status === "pending").length;
-      const spent = userBookings.reduce((sum, b) => sum + (b.total || 0), 0);
+    // Load bookings from Firebase
+    const loadBookings = async () => {
+      try {
+        const result = await getUserBookings(user.id);
+        if (result.ok) {
+          setBookings(result.data);
+          
+          // Calculate stats
+          const paid = result.data.filter((b) => b.status === "paid").length;
+          const pending = result.data.filter((b) => b.status === "pending").length;
+          const spent = result.data.reduce((sum, b) => sum + (b.total || 0), 0);
+          setStats({
+            total: result.data.length,
+            paid,
+            pending,
+            spent,
+          });
+        }
+      } catch (e) {
+        console.log("Error loading bookings:", e);
+        // Fallback to localStorage
+        loadFromLocalStorage();
+      }
+    };
+
+    const loadFromLocalStorage = () => {
+      try {
+        const allBookings = JSON.parse(localStorage.getItem("stb-bookings") ?? "[]");
+        const userBookings = allBookings.filter((b) => b.passenger?.id === user?.id);
+        setBookings(userBookings.reverse());
+        
+        const paid = userBookings.filter((b) => b.status === "paid").length;
+        const pending = userBookings.filter((b) => b.status === "pending").length;
+        const spent = userBookings.reduce((sum, b) => sum + (b.total || 0), 0);
+        setStats({
+          total: userBookings.length,
+          paid,
+          pending,
+          spent,
+        });
+      } catch (e) {
+        console.log("Error:", e);
+      }
+    };
+
+    loadBookings();
+
+    // Real-time listener for Firebase
+    const unsubscribe = listenUserBookings(user.id, (updatedBookings) => {
+      setBookings(updatedBookings);
+      const paid = updatedBookings.filter((b) => b.status === "paid").length;
+      const pending = updatedBookings.filter((b) => b.status === "pending").length;
+      const spent = updatedBookings.reduce((sum, b) => sum + (b.total || 0), 0);
       setStats({
-        total: userBookings.length,
+        total: updatedBookings.length,
         paid,
         pending,
         spent,
       });
-    } catch (e) {
-      console.log("Error:", e);
-    }
-  }, [user?.id]);
+    });
+
+    return () => unsubscribe();
+  }, [user]);
 
   const filteredBookings = bookings.filter(
     (b) =>
-      b.from.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      b.to.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      b.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      b.operator.toLowerCase().includes(searchTerm.toLowerCase())
+      b.from?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      b.to?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      b.id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      b.operator?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const getTransportIcon = (type) => {
@@ -105,7 +152,7 @@ export default function UserDashboard() {
   return (
     <div className="min-h-screen bg-gray-50 py-8 dark:bg-gray-900">
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
-        {/* ---------- Header ---------- */}
+        {/* Header */}
         <div className="mb-8 animate-fade-in-up">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>
@@ -133,9 +180,8 @@ export default function UserDashboard() {
           </div>
         </div>
 
-        {/* ---------- Stats Cards ---------- */}
+        {/* Stats Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          {/* Total Bookings */}
           <div className="group rounded-2xl bg-white p-6 shadow-md transition hover:shadow-xl dark:bg-gray-800 animate-fade-in-up">
             <div className="flex items-center justify-between">
               <div>
@@ -152,7 +198,6 @@ export default function UserDashboard() {
             </div>
           </div>
 
-          {/* Confirmed Bookings */}
           <div className="group rounded-2xl bg-white p-6 shadow-md transition hover:shadow-xl dark:bg-gray-800 animate-fade-in-up" style={{ animationDelay: "0.1s" }}>
             <div className="flex items-center justify-between">
               <div>
@@ -169,7 +214,6 @@ export default function UserDashboard() {
             </div>
           </div>
 
-          {/* Pending Bookings */}
           <div className="group rounded-2xl bg-white p-6 shadow-md transition hover:shadow-xl dark:bg-gray-800 animate-fade-in-up" style={{ animationDelay: "0.2s" }}>
             <div className="flex items-center justify-between">
               <div>
@@ -186,7 +230,6 @@ export default function UserDashboard() {
             </div>
           </div>
 
-          {/* Total Spent */}
           <div className="group rounded-2xl bg-white p-6 shadow-md transition hover:shadow-xl dark:bg-gray-800 animate-fade-in-up" style={{ animationDelay: "0.3s" }}>
             <div className="flex items-center justify-between">
               <div>
@@ -204,7 +247,7 @@ export default function UserDashboard() {
           </div>
         </div>
 
-        {/* ---------- Search ---------- */}
+        {/* Search */}
         <div className="mb-8 animate-fade-in-up" style={{ animationDelay: "0.4s" }}>
           <div className="flex flex-col md:flex-row gap-4">
             <div className="relative flex-1">
@@ -230,7 +273,7 @@ export default function UserDashboard() {
           </div>
         </div>
 
-        {/* ---------- Bookings List ---------- */}
+        {/* Bookings List */}
         <div className="rounded-2xl bg-white shadow-lg dark:bg-gray-800 animate-fade-in-up" style={{ animationDelay: "0.5s" }}>
           {filteredBookings.length === 0 ? (
             <div className="p-12 text-center">
@@ -280,7 +323,6 @@ export default function UserDashboard() {
                       className="transition hover:bg-gray-50 dark:hover:bg-gray-700/50"
                       style={{ animationDelay: `${index * 0.05}s` }}
                     >
-                      {/* Trip Details */}
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
                           <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-100 text-xl text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400">
@@ -300,7 +342,6 @@ export default function UserDashboard() {
                         </div>
                       </td>
 
-                      {/* Date & Seats */}
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-2 text-sm">
                           <FaCalendarAlt className="text-gray-400" />
@@ -308,21 +349,19 @@ export default function UserDashboard() {
                         </div>
                         <div className="mt-1 flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
                           <FaTicketAlt className="text-gray-400" />
-                          <span>Seats: {booking.seats.join(", ")}</span>
+                          <span>Seats: {booking.seats?.join(", ")}</span>
                         </div>
                       </td>
 
-                      {/* Fare */}
                       <td className="px-6 py-4">
                         <p className="text-lg font-bold text-indigo-600 dark:text-indigo-400">
                           {formatPrice(booking.total)}
                         </p>
                         <p className="text-xs text-gray-500 dark:text-gray-400">
-                          {booking.seats.length} seats × {formatPrice(booking.pricePerSeat)}
+                          {booking.seats?.length} seats × {formatPrice(booking.pricePerSeat)}
                         </p>
                       </td>
 
-                      {/* Status */}
                       <td className="px-6 py-4">
                         <span
                           className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold ${getStatusColor(
@@ -334,7 +373,6 @@ export default function UserDashboard() {
                         </span>
                       </td>
 
-                      {/* Action */}
                       <td className="px-6 py-4 text-right">
                         {booking.status === "paid" ? (
                           <Link
@@ -358,7 +396,7 @@ export default function UserDashboard() {
           )}
         </div>
 
-        {/* ---------- Quick Actions ---------- */}
+        {/* Quick Actions */}
         <div className="mt-8 grid grid-cols-2 md:grid-cols-4 gap-4 animate-fade-in-up" style={{ animationDelay: "0.6s" }}>
           <Link
             to="/home"
@@ -405,14 +443,14 @@ export default function UserDashboard() {
           </button>
         </div>
 
-        {/* ---------- Tips ---------- */}
+        {/* Tips */}
         <div className="mt-8 rounded-xl border-l-4 border-indigo-500 bg-indigo-50 p-4 dark:border-indigo-400 dark:bg-indigo-900/20 animate-fade-in-up" style={{ animationDelay: "0.7s" }}>
           <div className="flex items-start gap-3">
             <FaLightbulb className="mt-0.5 text-xl text-indigo-600 dark:text-indigo-400" />
             <div>
               <p className="font-semibold text-indigo-900 dark:text-indigo-400">Quick Tip</p>
               <p className="text-sm text-indigo-800 dark:text-indigo-300">
-                All your bookings are securely stored. You can view or download your e-tickets anytime from your dashboard.
+                All your bookings are securely stored in the cloud. You can view or download your e-tickets anytime from your dashboard.
                 Always carry your e-ticket (digital or printed) during travel.
               </p>
             </div>
@@ -420,7 +458,6 @@ export default function UserDashboard() {
         </div>
       </div>
 
-      {/* Animations CSS */}
       <style jsx>{`
         @keyframes fadeInUp {
           from {
